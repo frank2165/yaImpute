@@ -1,20 +1,91 @@
 varSelection <- 
 function (x,y,method="addVars",yaiMethod="msn",wts=NULL,
          nboot=20,trace=FALSE,
-         useParallel=if (.Platform$OS.type == "windows") FALSE else TRUE,...)
+         useParallel=if (.Platform$OS.type == "windows") FALSE else TRUE,
+         cores = NULL,
+         imputeYaiMethod = c("closest", "mean", "median", "dstWeighted"), ...)
 {
   if (missing(x)) stop ("x must be specified.")
   if (missing(y)) stop ("y must be specified.")
 
+  ## Capture method passed to imputeYaiMethod
+  imputeYaiMethod <- match.arg(imputeYaiMethod)
+                  
   okMethods <- c("addVars","delVars")
   if (!(method %in% okMethods)) 
     stop("method=\"",method,"\" must be one of: \"",
       paste0(okMethods,collapse="\", \""),"\"")
   if (is.null(wts)) wts <- rep(1,ncol(y))
-  if (useParallel && .Platform$OS.type != "Windows" && 
+  
+  ## Check that machine has cores available
+    available.cores <- parallel::detectCores()
+    if(available.cores == 1){
+        useParallel <- FALSE
+        warning("Only one core available, resetting useParallel to FALSE and running in sequence!")
+    }
+         
+  # load required packages...this is done here so that forked 
+  # processes will have the required packages...different logic is needed
+  # to support parallel on windows.
+  ## A record of the packages that are required is captured in the
+  ## R-object 'required.packages', to be loaded onto the worker nodes later. Note that 
+  ## this code block was previously run after the wrapper to mclapply/lapply was created,
+  ## but the changes made necessitate that it is run prior instead.
+  required.packages <- "yaImpute"
+    if (yaiMethod == "gnn") # (GNN), make sure we have package vegan loaded
+    {
+        if (!requireNamespace ("vegan")) stop("install vegan and try again")
+        required.packages <- c(required.packages, "vegan")
+    }
+    if (yaiMethod == "ica") # (ica), make sure we have package fastICA loaded
+    {
+        if (!requireNamespace ("fastICA")) stop("install fastICA and try again")
+        required.packages <- c(required.packages, "fastICA")
+    }
+    if (yaiMethod == "randomForest") # make sure we have package randomForest loaded
+    {
+        if (!requireNamespace ("randomForest")) stop("install randomForest and try again")
+        required.packages <- c(required.packages, "randomForest")
+    }     
+    if (yaiMethod == "msnPP") # make sure we have package ccaPP loaded
+    {
+        if (!requireNamespace ("ccaPP")) stop("install ccaPP and try again")
+        required.packages <- c(required.packages, "ccaPP")
+    }       
+  
+  
+  if (useParallel && !grepl("windows", .Platform$OS.type, ignore.case = TRUE) && 
       requireNamespace ("parallel"))
   {
     myapply <- parallel::mclapply
+  } else if (useParallel && grepl("windows", .Platform$OS.type, ignore.case = TRUE) && 
+      requireNamespace ("parallel")){
+    ## Code to set up parallel processing on Windows.
+           
+    if(is.null(cores)){
+            ## No guidance on the number of cores to use, detect the number of logical cores on 
+            ## the system and use all but one.
+            cores <- parallel::detectCores() - 1
+            warning("No cores were specified when attempting to process bootstrap samples in parallel", 
+                    " \n setting up cluster of ", cores, " nodes")
+    }
+        
+    # Set up virtual cluster
+    win.cl <- parallel::makePSOCKcluster(cores)
+        
+    # Export the character vector of packages that are to be loaded onto the worker
+    # nodes.
+    parallel::clusterExport(win.cl, c("required.pkg"), envir = environment())
+        
+    # Load the required packages onto each worker node.
+    parallel::clusterEvalQ(win.cl, {
+        lapply(required.pkg, function(x) {
+            require(x, character.only = TRUE, quietly = TRUE, warn.conflicts = FALSE)
+        })
+    })
+        
+    # Wrap call to clusterApplyLB
+    myapply <- function(x, fun, ...) parallel::clusterApplyLB(win.cl, x = x, fun = fun, ...) 
   } else { 
     if (useParallel) 
       warning("package parallel was not loaded and is not being used")
@@ -24,25 +95,7 @@ function (x,y,method="addVars",yaiMethod="msn",wts=NULL,
   cl <- match.call()
   bootstrap <- nboot > 0
   
-  # load required packages...this is done here so that forked 
-  # processes will have the required packages...different logic is needed
-  # to support parallel on windows.
-  if (yaiMethod == "gnn") # (GNN), make sure we have package vegan loaded
-  {
-    if (!requireNamespace ("vegan")) stop("install vegan and try again")
-  }
-  if (yaiMethod == "ica") # (ica), make sure we have package fastICA loaded
-  {
-    if (!requireNamespace ("fastICA")) stop("install fastICA and try again")
-  }
-  if (yaiMethod == "randomForest") # make sure we have package randomForest loaded
-  {
-    if (!requireNamespace ("randomForest")) stop("install randomForest and try again")
-  }     
-  if (yaiMethod == "msnPP") # make sure we have package ccaPP loaded
-  {
-    if (!requireNamespace ("ccaPP")) stop("install ccaPP and try again")
-  }
+  
   
   # single variable elimination logic:
   if (method=="delVars")    
@@ -50,7 +103,7 @@ function (x,y,method="addVars",yaiMethod="msn",wts=NULL,
     allErr <- unlist( myapply(1:max(1,nboot), function (i,x,y,wts,yaiMethod,...)
                suppressWarnings(grmsd(one=suppressWarnings(yai(x=x,y=y,
                method=yaiMethod,bootstrap=bootstrap,bootstrap,...)),
-               ancillaryData=y,wts=wts)) ,x,y,wts,yaiMethod,bootstrap,...) )
+               ancillaryData=y,wts=wts, imputeYaiMethod = imputeYaiMethod)) ,x,y,wts,yaiMethod,bootstrap,...) )
     if (trace) cat ("With all vars, mean grmsd (over boostraps) = ",mean(allErr),
             "; stddev=",sd(allErr),"; Num cols = ",ncol(x),"\n",sep="")
      
@@ -63,7 +116,7 @@ function (x,y,method="addVars",yaiMethod="msn",wts=NULL,
           function (i,xa,y,wts,var,yaiMethod,bootstrap,...)
              suppressWarnings(grmsd(one=suppressWarnings(yai(x=xa[,-var, 
                 drop=FALSE],y=y, method=yaiMethod,bootstrap=bootstrap,...)),
-                ancillaryData=y,wts=wts)), xa,y,wts,var,yaiMethod,bootstrap,...) )
+                ancillaryData=y,wts=wts, imputeYaiMethod = imputeYaiMethod)), xa,y,wts,var,yaiMethod,bootstrap,...) )
       names(err) <- names(xa)
 
       # drop the variable that creates the least error by not including it.
@@ -89,7 +142,7 @@ function (x,y,method="addVars",yaiMethod="msn",wts=NULL,
           function (i,xa,y,wts,yaiMethod,bootstrap,...) 
             suppressWarnings(grmsd(one=suppressWarnings(yai(x=xa,y=y,
               method=yaiMethod,bootstrap=bootstrap,...)),
-          ancillaryData=y,wts=wts)), xa,y,wts,yaiMethod,bootstrap,...) )
+          ancillaryData=y,wts=wts, imputeYaiMethod = imputeYaiMethod)), xa,y,wts,yaiMethod,bootstrap,...) )
       }
 
       # keep the variable that reduces the error the most when it is included

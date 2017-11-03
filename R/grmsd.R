@@ -1,8 +1,11 @@
 grmsd <- 
-function (...,ancillaryData=NULL,vars=NULL,wts=NULL,rtnVectors=FALSE)
+function (...,ancillaryData=NULL,vars=NULL,wts=NULL,rtnVectors=FALSE, 
+          imputeYaiMethod = c("closest", "mean", "median", "dstWeighted"))
 {
   if (missing(...)) stop ("... required")
 
+  imputeYaiMethod <- match.arg(imputeYaiMethod)
+  
   args <- list(...)  
   argLabs <- as.list(substitute(list(...)))[-1]
   names(args) <- if (is.null(names(argLabs))) unlist(argLabs) else
@@ -28,7 +31,7 @@ function (...,ancillaryData=NULL,vars=NULL,wts=NULL,rtnVectors=FALSE)
       next
     }
     if (inherits(object,"yai")) object <- 
-           impute.yai(object,ancillaryData=ancillaryData,vars=vars,observed=TRUE)               
+           impute.yai(object,ancillaryData=ancillaryData,vars=vars,observed=TRUE, method = imputeYaiMethod)               
     # try to allow "lm" objects. This code may fail as there are many
     # methods in R that inherit from "lm". 
     if (inherits(object,"lm")) 

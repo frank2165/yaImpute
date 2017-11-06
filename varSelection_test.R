@@ -32,27 +32,33 @@ for(i in seq_along(env.list)){
 # Using the future package to simulate threads in R, this way the first test will not block the
 # commencement of the second. (have to be careful that the number of cores being used does not
 # exceed the number available).
-plan(multiprocess)
+plan(multisession)
 
 
 # Test package version, on Windows this will run with useParallel == FALSE.
 pkg.result %<-% {
+    set.seed(117)
     pkg.start <- Sys.time()
-    pkg.tmp   <- yaImpute::varSelection(x = x, y = y, yaiMethod = yaiMethod, trace = trace,
-                                        k = k, nboot = nboot, pVal = 0.05, rfMode = "regression",
-                                        ntree = 500, useParallel = FALSE)
-    pkg.runtime <- Sys.time() - start
+    pkg.tmp   <- suppressMessages(
+        yaImpute::varSelection(x = x, y = y, yaiMethod = yaiMethod, trace = trace,
+                               k = k, nboot = nboot, pVal = 0.05, rfMode = "regression",
+                               ntree = 500, useParallel = FALSE, bootstrap = FALSE)
+    )
+    pkg.runtime <- Sys.time() - pkg.start
     list(start = pkg.start, result = pkg.tmp, runtime = pkg.runtime)
 }
 
 
 # Test modified version
 new.result %<-% {
+    set.seed(117)
     new.start <- Sys.time()
-    new.tmp   <- varSelection(x = x, y = y, yaiMethod = yaiMethod, trace = trace,
-                              k = k, nboot = nboot, pVal = 0.05, rfMode = "regression",
-                              ntree = 500)
-    new.runtime <- Sys.time() - start
+    new.tmp   <- suppressMessages(
+        varSelection(x = x, y = y, yaiMethod = yaiMethod, trace = trace,
+                     k = k, nboot = nboot, pVal = 0.05, rfMode = "regression",
+                     ntree = 500, bootstrap = FALSE)
+    )
+    new.runtime <- Sys.time() - new.start
     list(start = new.start, result = new.tmp, runtime = new.runtime)
 }
 

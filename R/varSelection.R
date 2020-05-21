@@ -73,11 +73,11 @@ function (x,y,method="addVars",yaiMethod="msn",imputeMethod="closest",
         
     # Export the character vector of packages that are to be loaded onto the worker
     # nodes.
-    parallel::clusterExport(win.cl, c("required.packages"), envir = environment())
+    parallel::clusterExport(win.cl, c("required.pkg"), envir = environment())
         
     # Load the required packages onto each worker node.
     parallel::clusterEvalQ(win.cl, {
-        lapply(required.packages, function(x) {
+        lapply(required.pkg, function(x) {
             require(x, character.only = TRUE, quietly = TRUE, warn.conflicts = FALSE)
         })
     })

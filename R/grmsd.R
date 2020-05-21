@@ -1,11 +1,10 @@
 grmsd <- 
 function (...,ancillaryData=NULL,vars=NULL,wts=NULL,rtnVectors=FALSE,
           imputeMethod="closest")
+
 {
   if (missing(...)) stop ("... required")
 
-  imputeYaiMethod <- match.arg(imputeYaiMethod)
-  
   args <- list(...)  
   argLabs <- as.list(substitute(list(...)))[-1]
   names(args) <- if (is.null(names(argLabs))) unlist(argLabs) else

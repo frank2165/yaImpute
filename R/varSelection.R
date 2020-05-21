@@ -1,9 +1,7 @@
 varSelection <- 
-function (x,y,method="addVars",yaiMethod="msn",wts=NULL,
-         nboot=20,trace=FALSE,
-         useParallel=if (.Platform$OS.type == "windows") FALSE else TRUE,
-         cores = NULL,
-         imputeYaiMethod = c("closest", "mean", "median", "dstWeighted"), ...)
+function (x,y,method="addVars",yaiMethod="msn",imputeMethod="closest",
+         wts=NULL,nboot=20,trace=FALSE,
+         useParallel=if (.Platform$OS.type == "windows") FALSE else TRUE,...)
 {
   if (missing(x)) stop ("x must be specified.")
   if (missing(y)) stop ("y must be specified.")
@@ -95,15 +93,39 @@ function (x,y,method="addVars",yaiMethod="msn",wts=NULL,
   cl <- match.call()
   bootstrap <- nboot > 0
   
-  
-  
+
+  # load required packages...this is done here so that forked 
+  # processes will have the required packages...different logic is needed
+  # to support parallel on windows.
+  if (yaiMethod == "gnn") # (GNN), make sure we have package vegan loaded
+  {
+    if (!requireNamespace ("vegan")) stop("install vegan and try again")
+  }
+  if (yaiMethod == "ica") # (ica), make sure we have package fastICA loaded
+  {
+    if (!requireNamespace ("fastICA")) stop("install fastICA and try again")
+  }
+  if (yaiMethod == "randomForest") # make sure we have package randomForest loaded
+  {
+    if (!requireNamespace ("randomForest")) stop("install randomForest and try again")
+  }     
+  if (yaiMethod == "msnPP") # make sure we have package ccaPP loaded
+  {
+    if (!requireNamespace ("ccaPP")) stop("install ccaPP and try again")
+  }
+  if (yaiMethod == "gower") # make sure we have package gower loaded
+  {
+    if (!requireNamespace ("gower")) stop("install gower and try again")
+  }     
+
   # single variable elimination logic:
   if (method=="delVars")    
   {
     allErr <- unlist( myapply(1:max(1,nboot), function (i,x,y,wts,yaiMethod,...)
                suppressWarnings(grmsd(one=suppressWarnings(yai(x=x,y=y,
-               method=yaiMethod,bootstrap=bootstrap,bootstrap,...)),
-               ancillaryData=y,wts=wts, imputeYaiMethod = imputeYaiMethod)) ,x,y,wts,yaiMethod,bootstrap,...) )
+               method=yaiMethod,bootstrap=bootstrap,...)),
+               ancillaryData=y,wts=wts)) ,x,y,wts,yaiMethod,bootstrap,...) )
+
     if (trace) cat ("With all vars, mean grmsd (over boostraps) = ",mean(allErr),
             "; stddev=",sd(allErr),"; Num cols = ",ncol(x),"\n",sep="")
      
@@ -115,8 +137,9 @@ function (x,y,method="addVars",yaiMethod="msn",wts=NULL,
       for (var in 1:ncol(xa)) err[[var]] <- unlist(myapply(1:max(1,nboot), 
           function (i,xa,y,wts,var,yaiMethod,bootstrap,...)
              suppressWarnings(grmsd(one=suppressWarnings(yai(x=xa[,-var, 
-                drop=FALSE],y=y, method=yaiMethod,bootstrap=bootstrap,...)),
-                ancillaryData=y,wts=wts, imputeYaiMethod = imputeYaiMethod)), xa,y,wts,var,yaiMethod,bootstrap,...) )
+                drop=FALSE],y=y, method=yaiMethod, bootstrap=bootstrap,...)),
+                ancillaryData=y,wts=wts)), xa,y,wts,var,yaiMethod,bootstrap,...) )
+
       names(err) <- names(xa)
 
       # drop the variable that creates the least error by not including it.

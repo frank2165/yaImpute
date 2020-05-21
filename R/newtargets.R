@@ -38,6 +38,15 @@ newtargets=function(object,newdata,k=NULL,ann=NULL)
    if (object$method == "randomForest") 
       if (!requireNamespace ("randomForest")) 
         stop("install randomForest and try again")
+   if (object$method == "gower")
+   {
+     stop("install gower and try again")
+     # the purpose of this line of code is to suppress CRAN check notes
+     gower_topn <- function (...) NULL
+    } else {
+      gower_topn <- gower::gower_topn
+    }
+    if (!requireNamespace ("gower")) stop("install gower and try again")    
 
    sumSqDiff=function(x,y) { d=x-y; sum(d*d) }
    factorMatch = get("factorMatch",asNamespace("yaImpute"))
@@ -162,6 +171,11 @@ newtargets=function(object,newdata,k=NULL,ann=NULL)
       xcvTrgs=scale(xTrgs,center=object$xScale$center,scale=object$xScale$scale)         
       xcvTrgs=as.matrix(xcvTrgs[,theCols,drop=FALSE]) 
    }
+   else if (object$method == "gower") 
+   {      
+      xcvRefs=object$xRefs[,theCols,drop=FALSE]
+      xcvTrgs=xTrgs[,theCols,drop=FALSE]       
+   }
    else # method is raw
    {
       xcvRefs=as.matrix(object$xRefs[,theCols,drop=FALSE])
@@ -174,7 +188,8 @@ newtargets=function(object,newdata,k=NULL,ann=NULL)
    neiIdsTrgs=neiDstTrgs
    colnames(neiIdsTrgs)=paste("Id.k",1:object$k,sep="")
 
-   if (object$method %in%  c("msn","msn2","msnPP","mahalanobis","ica","euclidean","gnn","raw"))
+   if (object$method %in%  c("msn","msn2","msnPP","mahalanobis","ica",
+       "euclidean","gnn","raw"))
    {
       if (ann & nrow(xcvTrgs)>0)
       {
@@ -195,11 +210,20 @@ newtargets=function(object,newdata,k=NULL,ann=NULL)
          }
       }
    }
+   else if (object$method == "gower")
+   {
+      gow = gower_topn(x=xcvRefs,y=xcvTrgs,n=k)
+      for (i in 1:object$k)
+      {
+         neiDstTrgs[,i]=gow$distance[i,]
+         neiIdsTrgs[,i]=rownames(xcvTrgs)[gow$index[i,]]
+      }     
+   }
    else if (object$method == "randomForest")
    {
      prox=lapply(apply(nodes,1,as.list),function (x) {
            prx=.Call("rfoneprox", INTrefNodes, INTsort, INTnrow, INTncol,
-                     as.integer(x), vector("integer",INTnrow),dup=FALSE) 
+                     as.integer(x), vector("integer",INTnrow)) 
            if (object$k > 1) px=sort(prx,index.return = TRUE, decreasing = TRUE)$ix[1:object$k]
            else              px=which.max(prx)
            c(prx[px],px)  # counts followed by pointers to references

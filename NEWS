@@ -1,3 +1,34 @@
+Changes in version 1.0-32:
+
+* Corrected the interface information in yaImpute_init.c so that it matches
+the actual arguments of rfoneprox. Thanks to Prof Ripley for finding the error.
+
+* Added an argument to varSelection and grmsd that is passed to impute.yai so that the
+method of computing the imputed value can be controlled. 
+
+Changes in version 1.0-31:
+
+* Changed a variable name in one of the ANN routines so that the code can 
+compile on Solaris. Removed an unused variable in the ANN routines. Thanks to 
+Prof Ripley for finding the error.
+
+Changes in version 1.0-30:
+
+* Removed the c++ "register" keyword from the ann sources as requested by CRAN.
+* Added method="gower" for gower distance that allows categorical variables in 
+the X data (the Y data are ignored, analogous to method="raw" where the relationship
+between the X and Y data are not relevant).
+* Fixed a bug in varSelection pointed out by Francisco Mauro.
+
+Changes in version 1.0-27 and 1.0-29:
+
+* Addressed an issue in the ann source code (likely a false positive) found 
+by rchk at CRAN.
+* Added RegisteredNativeSymbol usage according to best practices
+* The error when bootstraping with method="randomForests" is fixed.
+* Fixed an error in yai() when it is called by varSelection() using 
+yaiMethod="randomForest", thanks to Andrew Haywood.
+
 Changes in version 1.0-25 and 1.0-26:
 
 * Added import directives to meet recent CRAN rules that say that functions 

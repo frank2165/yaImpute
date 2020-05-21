@@ -73,7 +73,7 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
    # ARGUMENT and DATA screening
 
    methodSet=c("msn","msn2","msnPP","mahalanobis","ica","euclidean","gnn",
-               "randomForest","raw","random")
+               "randomForest","raw","random","gower")
                
    if (!(method %in% methodSet))
       stop (paste("method not one of:",paste(methodSet,collapse =", ")))
@@ -113,7 +113,7 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
         randomForest <- randomForest::randomForest
       }
 
-   }     
+   } 
    if (method == "msnPP") # make sure we have package ccaPP loaded
    {
       if (!requireNamespace ("ccaPP")) 
@@ -126,7 +126,17 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
         ccaGrid <- ccaPP::ccaGrid
         ccaProj <- ccaPP::ccaProj
       }
-
+   }
+   if (method == "gower") # make sure we have package gower loaded
+   {
+      if (!requireNamespace ("gower")) 
+      {
+        stop("install gower and try again")
+        # the purpose of this line of code is to suppress CRAN check notes
+        gower_topn <- function (...) NULL
+      } else {
+        gower_topn <- gower::gower_topn
+      }
    }     
 
    cl=match.call()
@@ -149,7 +159,7 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
            if (length(y) == nrow (x)) y=data.frame(y,row.names=rownames(x), 
                                                    stringsAsFactors = TRUE)
            else stop(paste0("when formulas are not used,",
-                     " y must be a matrix or dataframe,",
+                     " y must be a matrix, dataframe,",
                      " or a vector the same length of rows in x"))
          } 
          if (is.matrix(y) | is.data.frame(y))
@@ -173,9 +183,9 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
       if (length(obsDropped)) warning (length(obsDropped)," observation(s) removed")
       theFormula=list(x=x,y=y)
    }
-   else stop ("x is missing or not a matrix nor dataframe")
+   else stop ("x is missing or not a matrix or a dataframe")
    if (is.null(yall) & (method %in% c("mahalanobis","ica",
-                        "euclidean","randomForest","raw")))
+                        "euclidean","randomForest","raw","gower")))
    {
       ydum=TRUE
       yall=data.frame(ydummy=rep(1,nrow(xall)),row.names=rownames(xall))
@@ -184,13 +194,13 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
   
    if (is.null(yall)) stop("y is missing")
    if (nrow(xall) == 0) stop ("no observations in x")
-   if (! (method %in% c("random","randomForest")))
+   if (! (method %in% c("random","randomForest","gower")))
    {
       fy=0
       if (!(method %in% c("mahalanobis","ica","euclidean","raw"))) 
         fy=sum(findFactors(yall))
       if (fy+sum(findFactors(xall)>0)>0) 
-        stop("factors allowed only for methods randomForest or random")
+        stop("factors allowed only for methods randomForest, random, or gower")
    }
    refs=intersect(rownames(yall),rownames(xall))
    if (length(refs) == 0) stop ("no reference observations.")
@@ -232,9 +242,7 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
        nyn = sample(1:ncol(yall),ny)
        yall = yall[,nyn,drop=FALSE]
      }
-   }
-   
-   
+   }   
    # if this is a bootstrap run, draw the sample.
    if (bootstrap)
    { 
@@ -267,10 +275,7 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
          xRefs=xall[refs,,drop=FALSE]
          trgs=setdiff(rownames(xall),refs)
       }
-   }
-
-   if (method == "gnn") # remove columns with zero sums.
-   {
+      # now remove columns with zero sums.
       yDrop=apply(yRefs,2,sum) <= 0
       if (sum(yDrop) > 0) warning ("y variables with zero sums: ",
                                     paste(colnames(yRefs)[yDrop],collapse=","))
@@ -302,9 +307,9 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
      rownames(ce) = colnames(yRefs)
      yScale=list(center=ce[,1],scale=ce[,2])
    }
-   # for all methods except randomForest, random, and raw, 
+   # for all methods except randomForest, random, raw, and gower
    # variables with zero variance are dropped.
-   if (!(method %in% c("randomForest","random","raw")))
+   if (!(method %in% c("randomForest","random","raw","gower")))
    {
       xDrop=xScale$scale < 1e-10
       if (sum(xDrop) > 0) warning ("x variables with zero variance: ",
@@ -319,8 +324,9 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
    }
    else xDrop=NULL
 
-   # for this method, xRefs must be a matrix.
-   if (method != "randomForest" && !is.matrix(xRefs)) xRefs=as.matrix(xRefs)
+   # for most methods, xRefs must be a matrix.
+   if (! (method %in% c("randomForest","gower")) && !is.matrix(xRefs)) 
+     xRefs=as.matrix(xRefs)
 
    # define these elements as NULL, some will be redefined below.
 
@@ -331,6 +337,7 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
    ccaVegan=NULL
    ranForest=NULL
    xTrgs=NULL
+   xcvRefs=NULL
    xcvTrgs=NULL
    ICA=NULL
 
@@ -506,7 +513,7 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
          xcvTrgs=scale(xTrgs,center=xScale$center,scale=xScale$scale)
       }
    }
-   else if (method == "raw")
+   else if (method %in% c("raw"))
    {
       xcvRefs=xRefs
       nVec = ncol(xRefs)
@@ -515,6 +522,17 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
          xTrgs=xall[trgs,,drop=FALSE]
          xcvTrgs=as.matrix(xTrgs)
       }
+   }
+   else if (method %in% c("gower"))
+   {
+      xcvRefs=xRefs
+      nVec = ncol(xRefs)
+      if (!noTrgs && length(trgs) > 0)
+      {
+         xTrgs=xall[trgs,,drop=FALSE]
+         xcvTrgs=xTrgs
+      }
+      ann=FALSE
    }
    else if (method == "gnn") # GNN
    {
@@ -618,8 +636,7 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
          if (is.null(nodeset)) stop("randomForest did not return nodes")
          colnames(nodeset)=paste(colnames(nodeset),i,sep=".")
          nodes=if (is.null(nodes)) nodeset else cbind(nodes,nodeset)
-      }
-  
+      }      
       if (bootstrap) 
       {
         rn = sub("\\.[0-9]$","",rownames(xRefs))
@@ -653,12 +670,13 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
    }
 
    # if bootstrap, then modify the reference list essentually removing the
-   # duplicate samples.  
-   if (bootstrap) 
+   # duplicate samples. For randomForest, correct processing is done above.
+  
+   if (bootstrap && method != "randomForest") 
    {
      unq = unique(bootsamp)
-     xcvRefs = xcvRefs[unq,,drop=FALSE]
-     xRefs   = xRefs  [unq,,drop=FALSE]
+     if (!is.null(xcvRefs)) xcvRefs = xcvRefs[unq,,drop=FALSE] 
+     xRefs = xRefs[unq,,drop=FALSE]
    }
 
    k=min(k,nrow(xRefs))
@@ -711,12 +729,21 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
            neiIdsTrgs[,ic]=rownames(xcvRefs)[d[,ic]]
          }
       }
+      else if (method == "gower")
+      {
+        gow = gower_topn(x=xcvRefs,y=xcvTrgs,n=k)
+        for (i in 1:k)
+        {
+           neiDstTrgs[,i]=gow$distance[i,]
+           neiIdsTrgs[,i]=rownames(xcvTrgs)[gow$index[i,]]
+        }
+      }
       else if (method == "randomForest")
       {
         prox=lapply(apply(nodes[rownames(xTrgs),,drop=FALSE],1,as.list),function (x) 
           {
              prx=.Call("rfoneprox", INTrefNodes, INTsort, INTnrow, INTncol,
-                       as.integer(x), vector("integer",INTnrow),dup=FALSE) 
+                       as.integer(x), vector("integer",INTnrow)) 
              if (k > 1)  px=sort(prx,index.return = TRUE, decreasing = TRUE)$ix[1:k]
              else        px=which.max(prx)
              c(prx[px],px)  # counts followed by pointers to references
@@ -750,7 +777,8 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
       rownames(neiIdsRefs)=rownames(xRefs)
       colnames(neiIdsRefs)=paste("Id.k",1:k,sep="")
       l=k+1
-      if (method %in%  c("msn","msn2","msnPP","mahalanobis","ica","euclidean","gnn","raw"))
+      if (method %in%  c("msn","msn2","msnPP","mahalanobis","ica","euclidean",
+                         "gnn","raw"))
       {
          if (ann & nrow(xcvRefs)> 0)
          {
@@ -776,12 +804,21 @@ yai <- function(x=NULL,y=NULL,data=NULL,k=1,noTrgs=FALSE,noRefs=FALSE,
             }
          }
       }
+      else if (method == "gower")
+      {
+        gow = gower_topn(x=xcvRefs,y=xcvRefs,n=l)
+        for (i in 2:l)
+        {
+           neiDstRefs[,(i-1)]=gow$distance[i,]
+           neiIdsRefs[,(i-1)]=rownames(xcvRefs)[gow$index[i,]]
+        }
+      }      
       else if (method == "randomForest")
       {
         prox=lapply(apply(refNodes,1,as.list),function (x) 
           {
              prx=.Call("rfoneprox", INTrefNodes, INTsort, INTnrow, INTncol,
-                       as.integer(x), vector("integer",INTnrow),dup=FALSE) 
+                       as.integer(x), vector("integer",INTnrow)) 
              if (k > 1) px=sort(prx,index.return = TRUE, decreasing = TRUE)$ix[2:l]
              else
              { 
